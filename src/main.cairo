@@ -1,5 +1,6 @@
 #[starknet::contract]
 mod QuestNft {
+    use core::array::SpanTrait;
     use openzeppelin::token::erc20::interface::{
         IERC20Camel, IERC20CamelDispatcher, IERC20CamelDispatcherTrait
     };
@@ -16,6 +17,7 @@ mod QuestNft {
         introspection::{src5::SRC5 as src5_component, dual_src5::{DualCaseSRC5, DualCaseSRC5Trait}}
     };
 
+    use debug::PrintTrait;
 
     #[storage]
     struct Storage {
@@ -77,6 +79,13 @@ mod QuestNft {
         #[key]
         operator: ContractAddress,
         approved: bool
+    }
+
+    #[derive(Drop, Serde)]
+    struct Task {
+        quest_id: felt252,
+        task_id: felt252,
+        user_addr: felt252,
     }
 
     mod Errors {
@@ -162,6 +171,30 @@ mod QuestNft {
             self._completed_tasks.write((quest_id, task_id, caller.into()), true);
 
             return ();
+        }
+
+        fn get_tasks_status(self: @ContractState, mut tasks: Span<Task>) -> Array<bool> {
+            let mut output = ArrayTrait::new();
+            loop {
+                match tasks.pop_front() {
+                    Option::Some(current_task) => {
+                        output
+                            .append(
+                                self
+                                    ._completed_tasks
+                                    .read(
+                                        (
+                                            *current_task.quest_id,
+                                            *current_task.task_id,
+                                            *current_task.user_addr
+                                        )
+                                    )
+                            );
+                    },
+                    Option::None => { break; }
+                }
+            };
+            output
         }
 
         fn tokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
