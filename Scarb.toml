@@ -9,6 +9,8 @@ repository = "https://github.com/starknet-id/quest_nft_contract"
 
 [dependencies]
 starknet = "2.3.0-rc0"
+openzeppelin = { git = "https://github.com/andrew-fleming/cairo-contracts.git" }
+custom_uri = { git = "https://github.com/starknet-id/custom_uri_component", rev = "0527f2a7d5264a195b9ef3ad280877ce4a5d7aca" }
 
 [[target.starknet-contract]]
 sierra = true
