@@ -13,9 +13,14 @@ trait IQuestNFT<TContractState> {
 
     fn get_tasks_status(self: @TContractState, tasks: Span<Task>) -> Array<bool>;
 
+
     fn tokenURI(self: @TContractState, tokenId: u256) -> Array<felt252>;
 
     fn contractURI(self: @TContractState) -> Array<felt252>;
+
+    fn setBaseTokenURI(ref self: TContractState, tokenURI: Span<felt252>);
+
+    fn setContractURI(ref self: TContractState, contractURI: Span<felt252>);
 
     fn upgrade(ref self: TContractState, new_class_hash: ClassHash);
 }

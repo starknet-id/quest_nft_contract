@@ -215,6 +215,17 @@ mod QuestNft {
             output
         }
 
+
+        fn setBaseTokenURI(ref self: ContractState, tokenURI: Span<felt252>) {
+            assert(get_caller_address() == self.Proxy_admin.read(), 'you must be admin');
+            self.custom_uri.set_base_uri(tokenURI);
+        }
+
+        fn setContractURI(ref self: ContractState, contractURI: Span<felt252>) {
+            assert(get_caller_address() == self.Proxy_admin.read(), 'you must be admin');
+            self.set_contract_uri(contractURI);
+        }
+
         fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
             assert(get_caller_address() == self.Proxy_admin.read(), 'you are not admin');
             assert(!new_class_hash.is_zero(), 'Class hash cannot be zero');
@@ -450,11 +461,6 @@ mod QuestNft {
             assert(
                 _check_on_erc721_received(from, to, token_id, data), Errors::SAFE_TRANSFER_FAILED
             );
-        }
-
-        fn _set_token_uri(ref self: ContractState, token_id: u256, token_uri: felt252) {
-            assert(self._exists(token_id), Errors::INVALID_TOKEN_ID);
-            self.ERC721_token_uri.write(token_id, token_uri)
         }
     }
 
