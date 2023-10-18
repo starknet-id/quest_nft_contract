@@ -169,8 +169,6 @@ mod QuestNft {
             // blacklist that reward
             self._mint(caller, tokenId);
             self._completed_tasks.write((quest_id, task_id, caller.into()), true);
-
-            return ();
         }
 
         fn get_tasks_status(self: @ContractState, mut tasks: Span<Task>) -> Array<bool> {
