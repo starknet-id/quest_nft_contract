@@ -110,6 +110,7 @@ mod QuestNft {
         short_name: felt252
     ) {
         self.ownable.initializer(owner);
+        self.set_contract_uri(contract_uri);
         self._starkpath_public_key.write(starkpath_public_key);
         self.erc721.initializer(full_name, short_name);
         self.custom_uri.set_base_uri(token_uri_base);
@@ -194,27 +195,9 @@ mod QuestNft {
             output
         }
 
-        fn tokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
-            self.custom_uri.get_uri(tokenId)
-        }
-
-        fn contractURI(self: @ContractState) -> Array<felt252> {
-            let mut output = ArrayTrait::new();
-            let mut i = 0;
-            loop {
-                let value = self.contract_uri.read(i);
-                if value == 0 {
-                    break;
-                };
-                output.append(value);
-                i += 1;
-            };
-            output
-        }
-
-        fn setBaseTokenURI(ref self: ContractState, tokenURI: Span<felt252>) {
+        fn setBaseTokenURI(ref self: ContractState, token_uri: Span<felt252>) {
             assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
-            self.custom_uri.set_base_uri(tokenURI);
+            self.custom_uri.set_base_uri(token_uri);
         }
 
         fn setContractURI(ref self: ContractState, contractURI: Span<felt252>) {
