@@ -195,6 +195,24 @@ mod QuestNft {
             output
         }
 
+        fn getTokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
+            self.custom_uri.get_uri(tokenId)
+        }
+
+        fn getContractURI(self: @ContractState) -> Array<felt252> {
+            let mut output = ArrayTrait::new();
+            let mut i = 0;
+            loop {
+                let value = self.contract_uri.read(i);
+                if value == 0 {
+                    break;
+                };
+                output.append(value);
+                i += 1;
+            };
+            output
+        }
+
         fn setBaseTokenURI(ref self: ContractState, token_uri: Span<felt252>) {
             assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
             self.custom_uri.set_base_uri(token_uri);
