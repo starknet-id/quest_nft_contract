@@ -55,7 +55,7 @@ fn test_get_tasks_status() {
     unsafe_state._completed_tasks.write((1, 2, 3), true);
     unsafe_state._completed_tasks.write((4, 5, 6), false);
     unsafe_state._completed_tasks.write((7, 8, 9), true);
-    let tasks_status = QuestNft::QuestNFTImpl::get_tasks_status(
+    let tasks_status = QuestNft::IQuestNFT::get_tasks_status(
         @unsafe_state,
         array![
             Task { quest_id: 1, task_id: 2, user_addr: 3 },
