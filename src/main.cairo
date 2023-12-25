@@ -1,3 +1,48 @@
+use openzeppelin::{
+    token::erc721::{ERC721Component::{ERC721Metadata, HasComponent}},
+    introspection::src5::SRC5Component,
+};
+use custom_uri::{
+    main::custom_uri_component::InternalImpl as CustomURIInternalImpl, main::custom_uri_component
+};
+
+#[starknet::interface]
+trait IERC721Metadata<TState> {
+    fn name(self: @TState) -> felt252;
+    fn symbol(self: @TState) -> felt252;
+    fn token_uri(self: @TState, tokenId: u256) -> Array<felt252>;
+    fn tokenURI(self: @TState, tokenId: u256) -> Array<felt252>;
+}
+
+#[starknet::embeddable]
+impl IERC721MetadataImpl<
+    TContractState,
+    +HasComponent<TContractState>,
+    +SRC5Component::HasComponent<TContractState>,
+    +custom_uri_component::HasComponent<TContractState>,
+    +Drop<TContractState>
+> of IERC721Metadata<TContractState> {
+    fn name(self: @TContractState) -> felt252 {
+        let component = HasComponent::get_component(self);
+        ERC721Metadata::name(component)
+    }
+
+    fn symbol(self: @TContractState) -> felt252 {
+        let component = HasComponent::get_component(self);
+        ERC721Metadata::symbol(component)
+    }
+
+    fn token_uri(self: @TContractState, tokenId: u256) -> Array<felt252> {
+        let component = custom_uri_component::HasComponent::get_component(self);
+        component.get_uri(tokenId)
+    }
+
+    fn tokenURI(self: @TContractState, tokenId: u256) -> Array<felt252> {
+        self.token_uri(tokenId)
+    }
+}
+
+
 #[starknet::contract]
 mod QuestNft {
     use openzeppelin::access::ownable::ownable::OwnableComponent::InternalTrait as OwnableInternalTrait;
@@ -8,7 +53,8 @@ mod QuestNft {
         account, access::ownable::OwnableComponent,
         upgrades::{UpgradeableComponent, interface::IUpgradeable},
         token::erc721::{
-            ERC721Component, erc721::ERC721Component::InternalTrait as ERC721InternalTrait
+            ERC721Component, erc721::ERC721Component::InternalTrait as ERC721InternalTrait,
+            ERC721Component::HasComponent, ERC721Component::ERC721Metadata,
         },
         introspection::{src5::SRC5Component, dual_src5::{DualCaseSRC5, DualCaseSRC5Trait}}
     };
@@ -35,13 +81,8 @@ mod QuestNft {
     #[abi(embed_v0)]
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
     #[abi(embed_v0)]
-    impl ERC721MetadataImpl = ERC721Component::ERC721MetadataImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721MetadataCamelOnly =
-        ERC721Component::ERC721MetadataCamelOnlyImpl<ContractState>;
-    impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
+    impl ERC721CamelOnlyImpl = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
+    impl ERC721MetadataImpl = super::IERC721MetadataImpl<ContractState>;
 
     // SRC5
     #[abi(embed_v0)]
