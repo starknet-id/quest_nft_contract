@@ -34,11 +34,27 @@ impl IERC721MetadataImpl<
 
     fn token_uri(self: @TContractState, tokenId: u256) -> Array<felt252> {
         let component = custom_uri_component::HasComponent::get_component(self);
-        component.get_uri(tokenId)
+        let hundred: NonZero<u256> = 100_u256.try_into().unwrap();
+        let big_number: NonZero<u256> = 0x2000000_u256.try_into().unwrap();
+        let (quotient, remainder) = DivRem::div_rem(tokenId, hundred);
+        if (remainder != 99) {
+            return component.get_uri(remainder);
+        } else {
+            let (value, digit) = DivRem::div_rem(quotient, big_number);
+            return component.get_uri(digit);
+        }
     }
 
     fn tokenURI(self: @TContractState, tokenId: u256) -> Array<felt252> {
-        self.token_uri(tokenId)
+        let hundred: NonZero<u256> = 100_u256.try_into().unwrap();
+        let big_number: NonZero<u256> = 0x2000000_u256.try_into().unwrap();
+        let (quotient, remainder) = DivRem::div_rem(tokenId, hundred);
+        if (remainder != 99) {
+            return self.token_uri(tokenId);
+        } else {
+            let (value, digit) = DivRem::div_rem(quotient, big_number);
+            return self.token_uri(digit);
+        }
     }
 }
 
