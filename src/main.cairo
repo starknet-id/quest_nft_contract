@@ -46,15 +46,7 @@ impl IERC721MetadataImpl<
     }
 
     fn tokenURI(self: @TContractState, tokenId: u256) -> Array<felt252> {
-        let hundred: NonZero<u256> = 100_u256.try_into().unwrap();
-        let big_number: NonZero<u256> = 0x2000000_u256.try_into().unwrap();
-        let (quotient, remainder) = DivRem::div_rem(tokenId, hundred);
-        if (remainder != 99) {
-            return self.token_uri(tokenId);
-        } else {
-            let (value, digit) = DivRem::div_rem(quotient, big_number);
-            return self.token_uri(digit);
-        }
+        self.token_uri(tokenId)
     }
 }
 
@@ -124,7 +116,7 @@ mod QuestNft {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        onMint: on_mint,
+        OnMint: on_mint,
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
@@ -210,7 +202,7 @@ mod QuestNft {
             // emit event
             self
                 .emit(
-                    Event::onMint(
+                    Event::OnMint(
                         on_mint {
                             timestamp: get_block_timestamp(),
                             address: caller,
