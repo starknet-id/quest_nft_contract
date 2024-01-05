@@ -117,7 +117,6 @@ mod QuestNft {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        OnMint: on_mint,
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
@@ -137,29 +136,18 @@ mod QuestNft {
         user_addr: felt252,
     }
 
-    #[derive(Drop, starknet::Event)]
-    struct on_mint {
-        timestamp: u64,
-        #[key]
-        address: ContractAddress,
-        #[key]
-        task_id: felt252,
-        #[key]
-        quest_id: felt252
-    }
-
-
     #[constructor]
     fn constructor(
         ref self: ContractState,
-        owner: ContractAddress,
+        proxy_admin: ContractAddress,
         token_uri_base: Span<felt252>,
         contract_uri: Span<felt252>,
         starkpath_public_key: felt252,
         full_name: felt252,
         short_name: felt252
     ) {
-        self.ownable.initializer(owner);
+        self.Proxy_admin.write(proxy_admin);
+        self.ownable.initializer(proxy_admin);
         self.set_contract_uri(contract_uri);
         self._starkpath_public_key.write(starkpath_public_key);
         self.erc721.initializer(full_name, short_name);
@@ -200,18 +188,6 @@ mod QuestNft {
             // blacklist that reward
             self.erc721._mint(caller, tokenId);
             self._completed_tasks.write((quest_id, task_id, caller.into()), true);
-            // emit event
-            self
-                .emit(
-                    Event::OnMint(
-                        on_mint {
-                            timestamp: get_block_timestamp(),
-                            address: caller,
-                            task_id: task_id,
-                            quest_id: quest_id,
-                        }
-                    )
-                );
         }
 
         fn get_tasks_status(self: @ContractState, mut tasks: Span<Task>) -> Array<bool> {
