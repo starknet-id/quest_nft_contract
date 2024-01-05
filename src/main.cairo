@@ -62,13 +62,14 @@ mod QuestNft {
         upgrades::{UpgradeableComponent, interface::IUpgradeable},
         token::erc721::{
             ERC721Component, erc721::ERC721Component::InternalTrait as ERC721InternalTrait,
-            ERC721Component::HasComponent, ERC721Component::ERC721Metadata,
+            ERC721Component::HasComponent,
         },
         introspection::{src5::SRC5Component, dual_src5::{DualCaseSRC5, DualCaseSRC5Trait}}
     };
     use core::pedersen::pedersen;
     use ecdsa::check_ecdsa_signature;
     use custom_uri::{interface::IInternalCustomURI, main::custom_uri_component};
+    use debug::PrintTrait;
 
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
@@ -90,6 +91,7 @@ mod QuestNft {
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
     #[abi(embed_v0)]
     impl ERC721CamelOnlyImpl = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
+    #[abi(embed_v0)]
     impl ERC721MetadataImpl = super::IERC721MetadataImpl<ContractState>;
 
     // SRC5
@@ -212,10 +214,6 @@ mod QuestNft {
                 }
             };
             output
-        }
-
-        fn getTokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
-            self.custom_uri.get_uri(tokenId)
         }
 
         fn getContractURI(self: @ContractState) -> Array<felt252> {

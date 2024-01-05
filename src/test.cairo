@@ -8,6 +8,10 @@ use quest_nft_contract::main::QuestNft::{_completed_tasksContractMemberStateTrai
 use quest_nft_contract::interface::{IQuestNFT, IQuestNFTDispatcher, IQuestNFTDispatcherTrait};
 use core::pedersen::pedersen;
 use starknet::testing::set_contract_address;
+use debug::PrintTrait;
+use quest_nft_contract::main::{
+    IERC721Metadata, IERC721MetadataDispatcher, IERC721MetadataDispatcherTrait
+};
 
 fn deploy(contract_class_hash: felt252, calldata: Array<felt252>) -> ContractAddress {
     let (address, _) = starknet::deploy_syscall(
@@ -16,7 +20,6 @@ fn deploy(contract_class_hash: felt252, calldata: Array<felt252>) -> ContractAdd
         .unwrap_syscall();
     address
 }
-
 
 fn deploy_contract() -> IQuestNFTDispatcher {
     let mut calldata = array![
@@ -65,4 +68,29 @@ fn test_get_tasks_status() {
             .span()
     );
     assert(tasks_status == array![true, false, true], 'incorrect tasks status');
+}
+
+#[test]
+#[available_gas(20000000000)]
+fn test_uri() {
+    let quest_nft = deploy_contract();
+    let token_id: u256 = 64733090932;
+    let pub_key_1 = 874739451078007766457464989774322083649278607533249481151382481072868806602;
+    set_contract_address(123.try_into().unwrap());
+    let (sig_0, sig_1) = (
+        1915720885730211331067514543880306332023718031919582822105712024521040374427,
+        3262517407179085765810521749505141273863723072518159927458172835166293363268
+    );
+
+    quest_nft.mint(token_id, 104, 108, (sig_0, sig_1));
+
+    let uriable = IERC721MetadataDispatcher { contract_address: quest_nft.contract_address };
+    let mut uri = uriable.token_uri(64733090932);
+
+    loop {
+        match uri.pop_front() {
+            Option::Some(char) => { char.print(); },
+            Option::None => { break; }
+        }
+    };
 }
