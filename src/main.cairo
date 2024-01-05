@@ -1,84 +1,132 @@
+use openzeppelin::{
+    token::erc721::{ERC721Component::{ERC721Metadata, HasComponent}},
+    introspection::src5::SRC5Component,
+};
+use custom_uri::{
+    main::custom_uri_component::InternalImpl as CustomURIInternalImpl, main::custom_uri_component
+};
+
+#[starknet::interface]
+trait IERC721Metadata<TState> {
+    fn name(self: @TState) -> felt252;
+    fn symbol(self: @TState) -> felt252;
+    fn token_uri(self: @TState, tokenId: u256) -> Array<felt252>;
+    fn tokenURI(self: @TState, tokenId: u256) -> Array<felt252>;
+}
+
+#[starknet::embeddable]
+impl IERC721MetadataImpl<
+    TContractState,
+    +HasComponent<TContractState>,
+    +SRC5Component::HasComponent<TContractState>,
+    +custom_uri_component::HasComponent<TContractState>,
+    +Drop<TContractState>
+> of IERC721Metadata<TContractState> {
+    fn name(self: @TContractState) -> felt252 {
+        let component = HasComponent::get_component(self);
+        ERC721Metadata::name(component)
+    }
+
+    fn symbol(self: @TContractState) -> felt252 {
+        let component = HasComponent::get_component(self);
+        ERC721Metadata::symbol(component)
+    }
+
+    fn token_uri(self: @TContractState, tokenId: u256) -> Array<felt252> {
+        let component = custom_uri_component::HasComponent::get_component(self);
+        let hundred: NonZero<u256> = 100_u256.try_into().unwrap();
+        let big_number: NonZero<u256> = 0x2000000_u256.try_into().unwrap();
+        let (quotient, remainder) = DivRem::div_rem(tokenId, hundred);
+        if (remainder != 99) {
+            return component.get_uri(remainder);
+        } else {
+            let (value, digit) = DivRem::div_rem(quotient, big_number);
+            return component.get_uri(digit);
+        }
+    }
+
+    fn tokenURI(self: @TContractState, tokenId: u256) -> Array<felt252> {
+        self.token_uri(tokenId)
+    }
+}
+
+
 #[starknet::contract]
 mod QuestNft {
-    use core::array::SpanTrait;
-    use openzeppelin::token::erc20::interface::{
-        IERC20Camel, IERC20CamelDispatcher, IERC20CamelDispatcherTrait
-    };
-    use starknet::{get_caller_address, ContractAddress, class_hash::ClassHash};
-    use custom_uri::{interface::IInternalCustomURI, main::custom_uri_component};
+    use openzeppelin::access::ownable::ownable::OwnableComponent::InternalTrait as OwnableInternalTrait;
+    use openzeppelin::access::ownable::interface::IOwnable;
     use quest_nft_contract::interface::IQuestNFT;
-    use ecdsa::check_ecdsa_signature;
-    use core::pedersen::pedersen;
+    use starknet::{ContractAddress, ClassHash, get_caller_address, get_block_timestamp};
     use openzeppelin::{
-        account,
+        account, access::ownable::OwnableComponent,
+        upgrades::{UpgradeableComponent, interface::IUpgradeable},
         token::erc721::{
-            interface, dual721_receiver::{DualCaseERC721Receiver, DualCaseERC721ReceiverTrait}
+            ERC721Component, erc721::ERC721Component::InternalTrait as ERC721InternalTrait,
+            ERC721Component::HasComponent, ERC721Component::ERC721Metadata,
         },
-        introspection::{src5::SRC5 as src5_component, dual_src5::{DualCaseSRC5, DualCaseSRC5Trait}}
+        introspection::{src5::SRC5Component, dual_src5::{DualCaseSRC5, DualCaseSRC5Trait}}
     };
+    use core::pedersen::pedersen;
+    use ecdsa::check_ecdsa_signature;
+    use custom_uri::{interface::IInternalCustomURI, main::custom_uri_component};
 
-    use debug::PrintTrait;
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: ERC721Component, storage: erc721, event: ERC721Event);
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
+    component!(path: custom_uri_component, storage: custom_uri, event: CustomUriEvent);
+
+
+    // add an owner
+    #[abi(embed_v0)]
+    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+
+    /// Upgradeable
+    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
+
+    // ERC721
+    #[abi(embed_v0)]
+    impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC721CamelOnlyImpl = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
+    impl ERC721MetadataImpl = super::IERC721MetadataImpl<ContractState>;
+
+    // SRC5
+    #[abi(embed_v0)]
+    impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     #[storage]
     struct Storage {
-        // quest nft contract
+        Proxy_admin: ContractAddress,
         _completed_tasks: LegacyMap<(felt252, felt252, felt252), bool>,
         _starkpath_public_key: felt252,
-        Proxy_admin: ContractAddress,
         contract_uri: LegacyMap<felt252, felt252>,
-        // components
         #[substorage(v0)]
-        custom_uri: custom_uri_component::Storage,
+        src5: SRC5Component::Storage,
         #[substorage(v0)]
-        src5: src5_component::Storage,
-        // ERC721
-        ERC721_name: felt252,
-        ERC721_symbol: felt252,
-        ERC721_owners: LegacyMap<u256, ContractAddress>,
-        ERC721_balances: LegacyMap<ContractAddress, u256>,
-        ERC721_token_approvals: LegacyMap<u256, ContractAddress>,
-        ERC721_operator_approvals: LegacyMap<(ContractAddress, ContractAddress), bool>,
-        ERC721_token_uri: LegacyMap<u256, felt252>,
+        erc721: ERC721Component::Storage,
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        upgradeable: UpgradeableComponent::Storage,
+        #[substorage(v0)]
+        custom_uri: custom_uri_component::Storage
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        CustomUriEvent: custom_uri_component::Event,
-        SRC5Event: src5_component::Event,
-        // ERC721
-        Transfer: Transfer,
-        Approval: Approval,
-        ApprovalForAll: ApprovalForAll,
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Transfer {
-        #[key]
-        from: ContractAddress,
-        #[key]
-        to: ContractAddress,
-        #[key]
-        token_id: u256
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct Approval {
-        #[key]
-        owner: ContractAddress,
-        #[key]
-        approved: ContractAddress,
-        #[key]
-        token_id: u256
-    }
-
-    #[derive(Drop, starknet::Event)]
-    struct ApprovalForAll {
-        #[key]
-        owner: ContractAddress,
-        #[key]
-        operator: ContractAddress,
-        approved: bool
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        ERC721Event: ERC721Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        UpgradeableEvent: UpgradeableComponent::Event,
+        #[flat]
+        CustomUriEvent: custom_uri_component::Event
     }
 
     #[derive(Drop, Serde)]
@@ -87,28 +135,6 @@ mod QuestNft {
         task_id: felt252,
         user_addr: felt252,
     }
-
-    mod Errors {
-        const INVALID_TOKEN_ID: felt252 = 'ERC721: invalid token ID';
-        const INVALID_ACCOUNT: felt252 = 'ERC721: invalid account';
-        const UNAUTHORIZED: felt252 = 'ERC721: unauthorized caller';
-        const APPROVAL_TO_OWNER: felt252 = 'ERC721: approval to owner';
-        const SELF_APPROVAL: felt252 = 'ERC721: self approval';
-        const INVALID_RECEIVER: felt252 = 'ERC721: invalid receiver';
-        const ALREADY_MINTED: felt252 = 'ERC721: token already minted';
-        const WRONG_SENDER: felt252 = 'ERC721: wrong sender';
-        const SAFE_MINT_FAILED: felt252 = 'ERC721: safe mint failed';
-        const SAFE_TRANSFER_FAILED: felt252 = 'ERC721: safe transfer failed';
-    }
-
-    component!(path: custom_uri_component, storage: custom_uri, event: CustomUriEvent);
-    component!(path: src5_component, storage: src5, event: SRC5Event);
-    #[abi(embed_v0)]
-    impl SRC5Impl = src5_component::SRC5Impl<ContractState>;
-    #[abi(embed_v0)]
-    impl SRC5CamelImpl = src5_component::SRC5CamelImpl<ContractState>;
-    impl SRC5InternalImpl = src5_component::InternalImpl<ContractState>;
-
 
     #[constructor]
     fn constructor(
@@ -121,15 +147,15 @@ mod QuestNft {
         short_name: felt252
     ) {
         self.Proxy_admin.write(proxy_admin);
-        self.custom_uri.set_base_uri(token_uri_base);
+        self.ownable.initializer(proxy_admin);
         self.set_contract_uri(contract_uri);
         self._starkpath_public_key.write(starkpath_public_key);
-        self.ERC721_name.write(full_name);
-        self.ERC721_symbol.write(short_name);
+        self.erc721.initializer(full_name, short_name);
+        self.custom_uri.set_base_uri(token_uri_base);
     }
 
     #[external(v0)]
-    impl QuestNFTImpl of IQuestNFT<ContractState> {
+    impl QuestNft of IQuestNFT<ContractState> {
         fn mint(
             ref self: ContractState,
             tokenId: u256,
@@ -139,14 +165,7 @@ mod QuestNft {
         ) {
             let caller = get_caller_address();
 
-            // we don't need to check NFT type, it was generated by server
-            // // get NFT type
-            // let (_, local nft_type_uint) = uint256_unsigned_div_rem(tokenId, Uint256(100, 0));
-            // // _uint256_to_felt(level_uint) from tests would be necessary for divisor > 2**128
-            // let nft_type = nft_type_uint.low;
-
             // bind user, quest and reward together
-
             let hashed = pedersen(
                 pedersen(
                     pedersen(pedersen(tokenId.low.into(), tokenId.high.into()), quest_id), task_id
@@ -167,7 +186,7 @@ mod QuestNft {
             assert(is_blacklisted == false, 'blacklisted task');
 
             // blacklist that reward
-            self._mint(caller, tokenId);
+            self.erc721._mint(caller, tokenId);
             self._completed_tasks.write((quest_id, task_id, caller.into()), true);
         }
 
@@ -195,11 +214,11 @@ mod QuestNft {
             output
         }
 
-        fn tokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
+        fn getTokenURI(self: @ContractState, tokenId: u256) -> Array<felt252> {
             self.custom_uri.get_uri(tokenId)
         }
 
-        fn contractURI(self: @ContractState) -> Array<felt252> {
+        fn getContractURI(self: @ContractState) -> Array<felt252> {
             let mut output = ArrayTrait::new();
             let mut i = 0;
             loop {
@@ -213,21 +232,24 @@ mod QuestNft {
             output
         }
 
+        fn setBaseTokenURI(ref self: ContractState, token_uri: Span<felt252>) {
+            assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
+            self.custom_uri.set_base_uri(token_uri);
+        }
 
-        fn setBaseTokenURI(ref self: ContractState, tokenURI: Span<felt252>) {
+        fn migrateOwnership(ref self: ContractState) {
             assert(get_caller_address() == self.Proxy_admin.read(), 'you must be admin');
-            self.custom_uri.set_base_uri(tokenURI);
+            self.ownable._transfer_ownership(self.Proxy_admin.read());
         }
 
         fn setContractURI(ref self: ContractState, contractURI: Span<felt252>) {
-            assert(get_caller_address() == self.Proxy_admin.read(), 'you must be admin');
+            assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
             self.set_contract_uri(contractURI);
         }
 
         fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
-            assert(get_caller_address() == self.Proxy_admin.read(), 'you are not admin');
-            assert(!new_class_hash.is_zero(), 'Class hash cannot be zero');
-            starknet::replace_class_syscall(new_class_hash).unwrap();
+            self.ownable.assert_only_owner();
+            self.upgradeable._upgrade(new_class_hash);
         }
     }
 
@@ -242,237 +264,6 @@ mod QuestNft {
                     Option::None => { break; }
                 }
             };
-        }
-    }
-
-    #[external(v0)]
-    impl ERC721Impl of interface::IERC721<ContractState> {
-        fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
-            assert(!account.is_zero(), Errors::INVALID_ACCOUNT);
-            self.ERC721_balances.read(account)
-        }
-
-        fn owner_of(self: @ContractState, token_id: u256) -> ContractAddress {
-            self._owner_of(token_id)
-        }
-
-        fn get_approved(self: @ContractState, token_id: u256) -> ContractAddress {
-            assert(self._exists(token_id), Errors::INVALID_TOKEN_ID);
-            self.ERC721_token_approvals.read(token_id)
-        }
-
-        fn is_approved_for_all(
-            self: @ContractState, owner: ContractAddress, operator: ContractAddress
-        ) -> bool {
-            self.ERC721_operator_approvals.read((owner, operator))
-        }
-
-        fn approve(ref self: ContractState, to: ContractAddress, token_id: u256) {
-            let owner = self._owner_of(token_id);
-
-            let caller = get_caller_address();
-            assert(
-                owner == caller || ERC721Impl::is_approved_for_all(@self, owner, caller),
-                Errors::UNAUTHORIZED
-            );
-            self._approve(to, token_id);
-        }
-
-        fn set_approval_for_all(
-            ref self: ContractState, operator: ContractAddress, approved: bool
-        ) {
-            self._set_approval_for_all(get_caller_address(), operator, approved)
-        }
-
-        fn transfer_from(
-            ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256
-        ) {
-            assert(
-                self._is_approved_or_owner(get_caller_address(), token_id), Errors::UNAUTHORIZED
-            );
-            self._transfer(from, to, token_id);
-        }
-
-        fn safe_transfer_from(
-            ref self: ContractState,
-            from: ContractAddress,
-            to: ContractAddress,
-            token_id: u256,
-            data: Span<felt252>
-        ) {
-            assert(
-                self._is_approved_or_owner(get_caller_address(), token_id), Errors::UNAUTHORIZED
-            );
-            self._safe_transfer(from, to, token_id, data);
-        }
-    }
-
-    #[external(v0)]
-    impl ERC721CamelOnlyImpl of interface::IERC721CamelOnly<ContractState> {
-        fn balanceOf(self: @ContractState, account: ContractAddress) -> u256 {
-            ERC721Impl::balance_of(self, account)
-        }
-
-        fn ownerOf(self: @ContractState, tokenId: u256) -> ContractAddress {
-            ERC721Impl::owner_of(self, tokenId)
-        }
-
-        fn getApproved(self: @ContractState, tokenId: u256) -> ContractAddress {
-            ERC721Impl::get_approved(self, tokenId)
-        }
-
-        fn isApprovedForAll(
-            self: @ContractState, owner: ContractAddress, operator: ContractAddress
-        ) -> bool {
-            ERC721Impl::is_approved_for_all(self, owner, operator)
-        }
-
-        fn setApprovalForAll(ref self: ContractState, operator: ContractAddress, approved: bool) {
-            ERC721Impl::set_approval_for_all(ref self, operator, approved)
-        }
-
-        fn transferFrom(
-            ref self: ContractState, from: ContractAddress, to: ContractAddress, tokenId: u256
-        ) {
-            ERC721Impl::transfer_from(ref self, from, to, tokenId)
-        }
-
-        fn safeTransferFrom(
-            ref self: ContractState,
-            from: ContractAddress,
-            to: ContractAddress,
-            tokenId: u256,
-            data: Span<felt252>
-        ) {
-            ERC721Impl::safe_transfer_from(ref self, from, to, tokenId, data)
-        }
-    }
-
-    #[generate_trait]
-    impl ERC721InternalImpl of ERC721InternalTrait {
-        fn initializer(ref self: ContractState, name: felt252, symbol: felt252) {
-            self.ERC721_name.write(name);
-            self.ERC721_symbol.write(symbol);
-
-            self.src5.register_interface(interface::IERC721_ID);
-            self.src5.register_interface(interface::IERC721_METADATA_ID);
-        }
-
-        fn _owner_of(self: @ContractState, token_id: u256) -> ContractAddress {
-            let owner = self.ERC721_owners.read(token_id);
-            match owner.is_zero() {
-                bool::False(()) => owner,
-                bool::True(()) => panic_with_felt252(Errors::INVALID_TOKEN_ID)
-            }
-        }
-
-        fn _exists(self: @ContractState, token_id: u256) -> bool {
-            !self.ERC721_owners.read(token_id).is_zero()
-        }
-
-        fn _is_approved_or_owner(
-            self: @ContractState, spender: ContractAddress, token_id: u256
-        ) -> bool {
-            let owner = self._owner_of(token_id);
-            let is_approved_for_all = ERC721Impl::is_approved_for_all(self, owner, spender);
-            owner == spender
-                || is_approved_for_all
-                || spender == ERC721Impl::get_approved(self, token_id)
-        }
-
-        fn _approve(ref self: ContractState, to: ContractAddress, token_id: u256) {
-            let owner = self._owner_of(token_id);
-            assert(owner != to, Errors::APPROVAL_TO_OWNER);
-
-            self.ERC721_token_approvals.write(token_id, to);
-            self.emit(Approval { owner, approved: to, token_id });
-        }
-
-        fn _set_approval_for_all(
-            ref self: ContractState,
-            owner: ContractAddress,
-            operator: ContractAddress,
-            approved: bool
-        ) {
-            assert(owner != operator, Errors::SELF_APPROVAL);
-            self.ERC721_operator_approvals.write((owner, operator), approved);
-            self.emit(ApprovalForAll { owner, operator, approved });
-        }
-
-        fn _mint(ref self: ContractState, to: ContractAddress, token_id: u256) {
-            assert(!to.is_zero(), Errors::INVALID_RECEIVER);
-            assert(!self._exists(token_id), Errors::ALREADY_MINTED);
-
-            self.ERC721_balances.write(to, self.ERC721_balances.read(to) + 1);
-            self.ERC721_owners.write(token_id, to);
-
-            self.emit(Transfer { from: Zeroable::zero(), to, token_id });
-        }
-
-        fn _transfer(
-            ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256
-        ) {
-            assert(!to.is_zero(), Errors::INVALID_RECEIVER);
-            let owner = self._owner_of(token_id);
-            assert(from == owner, Errors::WRONG_SENDER);
-
-            // Implicit clear approvals, no need to emit an event
-            self.ERC721_token_approvals.write(token_id, Zeroable::zero());
-
-            self.ERC721_balances.write(from, self.ERC721_balances.read(from) - 1);
-            self.ERC721_balances.write(to, self.ERC721_balances.read(to) + 1);
-            self.ERC721_owners.write(token_id, to);
-
-            self.emit(Transfer { from, to, token_id });
-        }
-
-        fn _burn(ref self: ContractState, token_id: u256) {
-            let owner = self._owner_of(token_id);
-
-            // Implicit clear approvals, no need to emit an event
-            self.ERC721_token_approvals.write(token_id, Zeroable::zero());
-
-            self.ERC721_balances.write(owner, self.ERC721_balances.read(owner) - 1);
-            self.ERC721_owners.write(token_id, Zeroable::zero());
-
-            self.emit(Transfer { from: owner, to: Zeroable::zero(), token_id });
-        }
-
-        fn _safe_mint(
-            ref self: ContractState, to: ContractAddress, token_id: u256, data: Span<felt252>
-        ) {
-            self._mint(to, token_id);
-            assert(
-                _check_on_erc721_received(Zeroable::zero(), to, token_id, data),
-                Errors::SAFE_MINT_FAILED
-            );
-        }
-
-        fn _safe_transfer(
-            ref self: ContractState,
-            from: ContractAddress,
-            to: ContractAddress,
-            token_id: u256,
-            data: Span<felt252>
-        ) {
-            self._transfer(from, to, token_id);
-            assert(
-                _check_on_erc721_received(from, to, token_id, data), Errors::SAFE_TRANSFER_FAILED
-            );
-        }
-    }
-
-    fn _check_on_erc721_received(
-        from: ContractAddress, to: ContractAddress, token_id: u256, data: Span<felt252>
-    ) -> bool {
-        if (DualCaseSRC5 { contract_address: to }
-            .supports_interface(interface::IERC721_RECEIVER_ID)) {
-            DualCaseERC721Receiver { contract_address: to }
-                .on_erc721_received(
-                    get_caller_address(), from, token_id, data
-                ) == interface::IERC721_RECEIVER_ID
-        } else {
-            DualCaseSRC5 { contract_address: to }.supports_interface(account::interface::ISRC6_ID)
         }
     }
 }
