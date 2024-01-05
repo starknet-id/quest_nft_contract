@@ -98,6 +98,7 @@ mod QuestNft {
 
     #[storage]
     struct Storage {
+        Proxy_admin: ContractAddress,
         _completed_tasks: LegacyMap<(felt252, felt252, felt252), bool>,
         _starkpath_public_key: felt252,
         contract_uri: LegacyMap<felt252, felt252>,
@@ -258,6 +259,11 @@ mod QuestNft {
         fn setBaseTokenURI(ref self: ContractState, token_uri: Span<felt252>) {
             assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
             self.custom_uri.set_base_uri(token_uri);
+        }
+
+        fn migrateOwnership(ref self: ContractState) {
+            assert(get_caller_address() == self.Proxy_admin.read(), 'you must be admin');
+            self.ownable._transfer_ownership(self.Proxy_admin.read());
         }
 
         fn setContractURI(ref self: ContractState, contractURI: Span<felt252>) {

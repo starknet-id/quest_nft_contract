@@ -1,4 +1,4 @@
-mod interface;
 mod main;
+mod interface;
 #[cfg(test)]
-mod test;
+mod tests;
