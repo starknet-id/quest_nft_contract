@@ -240,6 +240,11 @@ mod QuestNft {
             self.ownable._transfer_ownership(self.Proxy_admin.read());
         }
 
+        fn update_pub_key(ref self: ContractState, new_pub_key: felt252) {
+            self.ownable.assert_only_owner();
+            self._starkpath_public_key.write(new_pub_key);
+        }
+
         fn setContractURI(ref self: ContractState, contractURI: Span<felt252>) {
             assert(get_caller_address() == self.ownable.owner(), 'you must be admin');
             self.set_contract_uri(contractURI);
