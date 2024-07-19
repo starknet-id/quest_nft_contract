@@ -19,6 +19,8 @@ trait IQuestNFT<TContractState> {
 
     fn migrateOwnership(ref self: TContractState);
 
+    fn update_pub_key(ref self: TContractState, new_pub_key: felt252);
+
     fn setContractURI(ref self: TContractState, contractURI: Span<felt252>);
 
     fn upgrade(ref self: TContractState, new_class_hash: ClassHash);
